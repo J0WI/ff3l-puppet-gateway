@@ -1,0 +1,100 @@
+#!/bin/sh -e
+
+### BEGIN INIT INFO
+# Provides:          Alfred
+# Required-Start:    $network $syslog
+# Required-Stop:     $network $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Alfred Fact Exchange Service
+# Description: 
+### END INIT INFO
+
+. /lib/lsb/init-functions
+. /etc/ff3l
+
+test $DEBIAN_SCRIPT_DEBUG && set -v -x
+
+DAEMON=/opt/alfred/alfred
+DAEMON_VIS=/opt/alfred/vis/batadv-vis
+DESC="alfred"
+test -x $DAEMON || exit 0
+
+# Source defaults file; edit that file to configure this script.
+STATUSREFRESH=10
+OMIT_SENDSIGS=0
+
+start() {
+  local MASTER="$1"
+  local BATIF="$2"
+  start-stop-daemon --start --quiet --oknodo --background \
+    --pidfile "/var/run/alfred.${MASTER}.pid" --make-pidfile \
+    --exec "$DAEMON" -- ${ALFRED_OPTS}  -i "$MASTER" -b "$BATIF" -u /var/run/alfred."$BATIF".sock --  || STATUS=1 
+
+  start-stop-daemon --start --quiet --oknodo --background \
+    --pidfile "/var/run/batadv-vis.${MASTER}.pid" --make-pidfile \
+    --exec "$DAEMON_VIS" -- -s -i "$BATIF" -u /var/run/alfred."$BATIF".sock -- || STATUS=1 
+}
+
+stop_pid() {
+  local PIDFILE="$1"
+  if [ -e "$PIDFILE" ] ; then
+    PID="$(cat "$PIDFILE")"
+    kill -9 "$PID" || true
+    rm -f "$PIDFILE"
+  fi
+}
+
+case "$1" in
+start)
+  log_daemon_msg "Starting $DESC"
+
+  if [ $# -eq 2 ] ; then
+    MESH="$2"
+    if [ -e "/sys/class/net/${MESH}/mesh" ] ; then
+      MASTER=$(echo "$MESH" | sed -r 's/bat/br/')
+      start "$MASTER" "$MESH"
+      log_progress_msg "$MASTER"
+      log_end_msg ${STATUS:-0}
+    else
+      log_failure_msg "${MESH} is no mesh device"
+    fi
+  else
+    # autostart alfred instances
+    for MESH in /sys/class/net/*/mesh; do
+      BATIF=$(echo "$MESH" | sed -r 's/\/sys\/class\/net\/(.*)\/mesh/\1/')
+      MASTER=$(echo "$BATIF" | sed -r 's/bat/br/')
+      start "$MASTER" "$BATIF"
+      log_progress_msg "$MASTER"
+    done
+    log_end_msg ${STATUS:-0}
+  fi
+
+  ;;
+stop)
+  log_daemon_msg "Stopping $DESC"
+
+  for PIDFILE in $(find /var/run/* -name "alfred.*.pid" -type f); do
+    NAME="$(basename "$PIDFILE" .pid | sed 's/[^\.]*\.//')"
+    stop_pid "$PIDFILE"
+    stop_pid "$(echo "$PIDFILE" | sed 's/alfred/batadv-vis/')"
+    log_progress_msg "$NAME"
+  done
+  log_end_msg 0
+  ;;
+
+restart)
+  shift
+  $0 stop ${@}
+  sleep 1
+  $0 start ${@}
+  ;;
+*)
+  echo "Usage: $0 {start|stop|restart}" >&2
+  exit 1
+  ;;
+esac
+
+exit 0
+
+# vim:set ai sts=2 sw=2 tw=0:
