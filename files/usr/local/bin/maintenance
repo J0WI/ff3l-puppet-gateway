@@ -1,0 +1,35 @@
+#!/bin/bash
+
+##This is small script that stops the radvd service and puts a timestamp in the
+##/etc/ffnord file. This timestamp is read out when ask for status. So we know
+##when the maintenance mode was activated.
+
+. /etc/ff3l
+
+case $1 in
+  on)
+    sed -i -e 's/^MAINTENANCE=.*$/MAINTENANCE='$(date +%s)'/' /etc/ff3l
+    /etc/init.d/radvd stop
+    /etc/init.d/isc-dhcp-server stop
+    update-rc.d radvd remove
+    update-rc.d isc-dhcp-server remove
+    ;;
+  off)
+    sed -i -e 's/^MAINTENANCE=.*$/MAINTENANCE=0/' /etc/ff3l
+    /etc/init.d/radvd start
+    /etc/init.d/isc-dhcp-server start
+    update-rc.d radvd defaults
+    update-rc.d isc-dhcp-server defaults
+    ;;
+  status)
+    MAINTENANCE=${MAINTENANCE:-0}
+    if test $MAINTENANCE -eq 0; then
+      echo "Maintenance is off"
+    else
+      echo "Maintenance is on since $(date --date=date -d @${MAINTENANCE})"
+    fi
+    ;;
+  *)
+    echo "Usage $0 [on|off|status]"
+    ;;
+esac
