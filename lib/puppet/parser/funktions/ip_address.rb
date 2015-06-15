@@ -5,7 +5,7 @@
 module Puppet::Parser::Functions
   newfunction(:ip_address, :type => :rvalue, :doc => <<-EOS
     Returns the address of an IPv{4,6} address, where the given address is in
-    cidr notation, e.g. 192.168.0.1/16 results in 192.168.0.1.
+    cidr notation, e.g. 192.168.2.1/16 results in 192.168.2.1.
   EOS
   ) do |args|
     ip_address =args[0]
