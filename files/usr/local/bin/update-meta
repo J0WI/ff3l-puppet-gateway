@@ -1,0 +1,42 @@
+#!/bin/bash /usr/local/include/ff3l-update.common
+
+REPOSITORY=/var/lib/icvpn-meta/
+
+reload() {
+  ICVPN=${ICVPN:-0}
+  INCLUDE_BIRD4=${INCLUDE_BIRD4:-0}
+  INCLUDE_BIRD6=${INCLUDE_BIRD6:-0}
+
+
+  # Build-Up parameters for excluded zones
+  excluded_zones=''
+  for zone in ${!DNS_ZONE_EXCLUDE*}; do 
+    excluded_zones="${excluded_zones} -x ${!zone}"
+  done
+
+  echo bind9: regenerating configuration
+  /opt/icvpn-scripts/mkdns -f bind ${excluded_zones} -s /var/lib/icvpn-meta > /etc/bind/named.conf.icvpn-meta
+  echo bind9: reload
+  /usr/sbin/rndc reload
+
+  if [ $ICVPN = 1 ] ; then
+    excluded_peers=""
+    [ -n "${ICVPN_EXCLUDE}" ] && excluded_peers="-x ${ICVPN_EXCLUDE}"
+    if [ "$INCLUDE_BIRD6" = "true" ]; then
+      echo
+      echo bird6: regenerating icvpn peers
+      /opt/icvpn-scripts/mkbgp -6 -s /var/lib/icvpn-meta -d icvpn $excluded_peers > /etc/bird/bird6.conf.d/icvpn-peers.conf
+      echo bird6: reload
+      # We only want errors
+      /usr/sbin/birdc6 configure 1>/dev/null
+    fi
+    if [ "$INCLUDE_BIRD4" = "true" ]; then
+      echo
+      echo bird: regenerating icvpn peers
+      /opt/icvpn-scripts/mkbgp -4 -s /var/lib/icvpn-meta -d icvpn $excluded_peers > /etc/bird/bird.conf.d/icvpn-peers.conf
+      echo bird: reload
+      # We only want errors
+      /usr/sbin/birdc configure 1>/dev/null
+    fi
+  fi
+}
